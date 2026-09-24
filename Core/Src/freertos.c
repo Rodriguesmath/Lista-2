@@ -38,12 +38,6 @@ typedef struct {
   uint32_t tempoRuaMs;
 } CarroInfo_t;
 
-typedef enum {
-  PRIO_LOW    = osPriorityLow,
-  PRIO_NORMAL = osPriorityNormal,
-  PRIO_HIGH   = osPriorityHigh
-} Prioridade_t;
-
 static inline const char* GetPriorityName(osPriority_t prio)
 {
   switch (prio)
@@ -161,58 +155,68 @@ void TaskCarroFun(void *argument)
 {
   /* USER CODE BEGIN TaskCarroFun */
   CarroInfo_t *carro = (CarroInfo_t *)argument;
-  char msg[110];
+  char msg[128];
 
   /* Infinite loop */
   for(;;)
   {
-    /* 1. Tentativa de entrada */
+    /* -------------------------------------------------------------------------
+     * 1. Tentativa de Entrada: Carro chega e solicita vaga
+     * ------------------------------------------------------------------------- */
+    while (huart1.gState != HAL_UART_STATE_READY) osDelay(1);
     snprintf(msg, sizeof(msg), "[%lu] [%s] [Prioridade: %s] Tentando entrar... Aguardando vaga.\r\n",
              (unsigned long)++ordemExecucao,
              carro->nome,
              GetPriorityName(osThreadGetPriority(osThreadGetId())));
-    while (huart1.gState != HAL_UART_STATE_READY) osDelay(1);
     HAL_UART_Transmit(&huart1, (uint8_t *)msg, strlen(msg), 100);
 
-    /* 2. Entrada autorizada (bloqueia aqui se as vagas estiverem esgotadas) */
+    /* -------------------------------------------------------------------------
+     * 2. Aquisição do Recurso: Bloqueia no semáforo se não houver vagas livres
+     * ------------------------------------------------------------------------- */
     osSemaphoreAcquire(vagasHandle, osWaitForever);
+    while (huart1.gState != HAL_UART_STATE_READY) osDelay(1);
     snprintf(msg, sizeof(msg), "[%lu] [%s] [Prioridade: %s] Entrada autorizada! Estacionou na vaga.\r\n",
              (unsigned long)++ordemExecucao,
              carro->nome,
              GetPriorityName(osThreadGetPriority(osThreadGetId())));
-    while (huart1.gState != HAL_UART_STATE_READY) osDelay(1);
     HAL_UART_Transmit(&huart1, (uint8_t *)msg, strlen(msg), 100);
 
-    /* 3. Permanência no estacionamento */
+    /* -------------------------------------------------------------------------
+     * 3. Permanência: Veículo ocupa a vaga pelo tempo determinado
+     * ------------------------------------------------------------------------- */
     osDelay(carro->tempoEstacionadoMs / 2);
+    while (huart1.gState != HAL_UART_STATE_READY) osDelay(1);
     snprintf(msg, sizeof(msg), "[%lu] [%s] [Prioridade: %s] Permanecendo no estacionamento...\r\n",
              (unsigned long)++ordemExecucao,
              carro->nome,
              GetPriorityName(osThreadGetPriority(osThreadGetId())));
-    while (huart1.gState != HAL_UART_STATE_READY) osDelay(1);
     HAL_UART_Transmit(&huart1, (uint8_t *)msg, strlen(msg), 100);
     osDelay(carro->tempoEstacionadoMs / 2);
 
-    /* 4. Saída do estacionamento */
+    /* -------------------------------------------------------------------------
+     * 4. Saída do Estacionamento: Notifica que está deixando a vaga
+     * ------------------------------------------------------------------------- */
+    while (huart1.gState != HAL_UART_STATE_READY) osDelay(1);
     snprintf(msg, sizeof(msg), "[%lu] [%s] [Prioridade: %s] Saindo do estacionamento...\r\n",
              (unsigned long)++ordemExecucao,
              carro->nome,
              GetPriorityName(osThreadGetPriority(osThreadGetId())));
-    while (huart1.gState != HAL_UART_STATE_READY) osDelay(1);
     HAL_UART_Transmit(&huart1, (uint8_t *)msg, strlen(msg), 100);
 
-    /* 5. Liberação da vaga (imprime o aviso antes de liberar o semáforo para o próximo carro) */
+    /* -------------------------------------------------------------------------
+     * 5. Liberação da Vaga: Devolve o token ao semáforo contador
+     * ------------------------------------------------------------------------- */
+    while (huart1.gState != HAL_UART_STATE_READY) osDelay(1);
     snprintf(msg, sizeof(msg), "[%lu] [%s] [Prioridade: %s] Vaga liberada com sucesso!\r\n",
              (unsigned long)++ordemExecucao,
              carro->nome,
              GetPriorityName(osThreadGetPriority(osThreadGetId())));
-    while (huart1.gState != HAL_UART_STATE_READY) osDelay(1);
     HAL_UART_Transmit(&huart1, (uint8_t *)msg, strlen(msg), 100);
 
-    /* Libera efetivamente o semáforo para desbloquear o próximo carro */
+    /* Libera o token do semáforo, desbloqueando a próxima tarefa em espera */
     osSemaphoreRelease(vagasHandle);
 
-    /* Tempo passeando na rua antes de tentar estacionar novamente */
+    /* Tempo transitando na rua antes da próxima tentativa */
     osDelay(carro->tempoRuaMs);
   }
   /* USER CODE END TaskCarroFun */

@@ -1,0 +1,36 @@
+# Graphify
+graphify-out/
+.graphify/
+.graphify_*
+*.graphify*
+
+# STM32CubeIDE / Eclipse Build Artifacts
+[Dd]ebug/
+[Rr]elease/
+*.elf
+*.bin
+*.hex
+*.map
+*.list
+*.o
+*.d
+*.su
+*.cyclo
+*.a
+*.srec
+
+# Eclipse & CubeIDE Local / Temporary Settings
+.settings/language.settings.xml
+*.launch
+.metadata/
+.gdb_history
+*.ninja
+.ninja*
+
+# OS and Editor Temporary Files
+.DS_Store
+Thumbs.db
+*~
+*.swp
+*.bak
+*.orig

@@ -32,6 +32,12 @@
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
+typedef struct {
+  const char *nome;
+  uint32_t tempoEstacionadoMs;
+  uint32_t tempoRuaMs;
+} CarroInfo_t;
+
 typedef enum {
   PRIO_LOW    = osPriorityLow,
   PRIO_NORMAL = osPriorityNormal,
@@ -52,7 +58,8 @@ static inline const char* GetPriorityName(osPriority_t prio)
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-
+/* Experimento da Atividade 4: 3 -> 2 -> 1 vaga */
+#define TOTAL_VAGAS 3
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -63,37 +70,41 @@ static inline const char* GetPriorityName(osPriority_t prio)
 /* Private variables ---------------------------------------------------------*/
 /* USER CODE BEGIN Variables */
 uint32_t ordemExecucao = 0;
+
+/* Semáforo Contador para gerenciar as vagas do estacionamento */
+osSemaphoreId_t vagasHandle;
+const osSemaphoreAttr_t vagas_attributes = {
+  .name = "vagasSem"
+};
+
+/* Configuração dos 5 veículos com tempos dinâmicos para simulação realista */
+static const CarroInfo_t carrosInfo[5] = {
+  { "Carro 1", 3000, 2000 },
+  { "Carro 2", 2000, 2500 },
+  { "Carro 3", 4000, 2000 },
+  { "Carro 4", 2500, 3000 },
+  { "Carro 5", 3500, 2000 },
+};
+
+/* Handles das 5 tarefas */
+osThreadId_t Carro1Handle;
+osThreadId_t Carro2Handle;
+osThreadId_t Carro3Handle;
+osThreadId_t Carro4Handle;
+osThreadId_t Carro5Handle;
+
+const osThreadAttr_t Carro1_attributes = { .name = "Carro1", .stack_size = 256 * 4, .priority = (osPriority_t) osPriorityNormal };
+const osThreadAttr_t Carro2_attributes = { .name = "Carro2", .stack_size = 256 * 4, .priority = (osPriority_t) osPriorityNormal };
+const osThreadAttr_t Carro3_attributes = { .name = "Carro3", .stack_size = 256 * 4, .priority = (osPriority_t) osPriorityNormal };
+const osThreadAttr_t Carro4_attributes = { .name = "Carro4", .stack_size = 256 * 4, .priority = (osPriority_t) osPriorityNormal };
+const osThreadAttr_t Carro5_attributes = { .name = "Carro5", .stack_size = 256 * 4, .priority = (osPriority_t) osPriorityNormal };
+
 /* USER CODE END Variables */
-/* Definitions for TaskInterface */
-osThreadId_t TaskInterfaceHandle;
-const osThreadAttr_t TaskInterface_attributes = {
-  .name = "TaskInterface",
-  .stack_size = 256 * 4,
-  .priority = (osPriority_t) osPriorityNormal,
-};
-/* Definitions for TaskProcesso */
-osThreadId_t TaskProcessoHandle;
-const osThreadAttr_t TaskProcesso_attributes = {
-  .name = "TaskProcesso",
-  .stack_size = 256 * 4,
-  .priority = (osPriority_t) osPriorityNormal,
-};
-/* Definitions for TaskEmergencia */
-osThreadId_t TaskEmergenciaHandle;
-const osThreadAttr_t TaskEmergencia_attributes = {
-  .name = "TaskEmergencia",
-  .stack_size = 256 * 4,
-  .priority = (osPriority_t) osPriorityHigh, /* Experimentos: osPriorityLow, osPriorityNormal ou osPriorityHigh */
-};
 
 /* Private function prototypes -----------------------------------------------*/
 /* USER CODE BEGIN FunctionPrototypes */
-
+void TaskCarroFun(void *argument);
 /* USER CODE END FunctionPrototypes */
-
-void TaskInterfaceFun(void *argument);
-void TaskProcessoFun(void *argument);
-void TaskEmergenciaFun(void *argument);
 
 void MX_FREERTOS_Init(void); /* (MISRA C 2004 rule 8.1) */
 
@@ -112,7 +123,8 @@ void MX_FREERTOS_Init(void) {
   /* USER CODE END RTOS_MUTEX */
 
   /* USER CODE BEGIN RTOS_SEMAPHORES */
-  /* add semaphores, ... */
+  /* Semáforo Contador: TOTAL_VAGAS máximas, TOTAL_VAGAS inicialmente disponíveis */
+  vagasHandle = osSemaphoreNew(TOTAL_VAGAS, TOTAL_VAGAS, &vagas_attributes);
   /* USER CODE END RTOS_SEMAPHORES */
 
   /* USER CODE BEGIN RTOS_TIMERS */
@@ -124,17 +136,12 @@ void MX_FREERTOS_Init(void) {
   /* USER CODE END RTOS_QUEUES */
 
   /* Create the thread(s) */
-  /* creation of TaskInterface */
-  TaskInterfaceHandle = osThreadNew(TaskInterfaceFun, NULL, &TaskInterface_attributes);
-
-  /* creation of TaskProcesso */
-  TaskProcessoHandle = osThreadNew(TaskProcessoFun, NULL, &TaskProcesso_attributes);
-
-  /* creation of TaskEmergencia */
-  TaskEmergenciaHandle = osThreadNew(TaskEmergenciaFun, NULL, &TaskEmergencia_attributes);
-
   /* USER CODE BEGIN RTOS_THREADS */
-  /* add threads, ... */
+  Carro1Handle = osThreadNew(TaskCarroFun, (void *)&carrosInfo[0], &Carro1_attributes);
+  Carro2Handle = osThreadNew(TaskCarroFun, (void *)&carrosInfo[1], &Carro2_attributes);
+  Carro3Handle = osThreadNew(TaskCarroFun, (void *)&carrosInfo[2], &Carro3_attributes);
+  Carro4Handle = osThreadNew(TaskCarroFun, (void *)&carrosInfo[3], &Carro4_attributes);
+  Carro5Handle = osThreadNew(TaskCarroFun, (void *)&carrosInfo[4], &Carro5_attributes);
   /* USER CODE END RTOS_THREADS */
 
   /* USER CODE BEGIN RTOS_EVENTS */
@@ -143,82 +150,77 @@ void MX_FREERTOS_Init(void) {
 
 }
 
-/* USER CODE BEGIN Header_TaskInterfaceFun */
+/* USER CODE BEGIN Header_TaskCarroFun */
 /**
-  * @brief  Function implementing the TaskInterface thread.
-  * @param  argument: Not used
+  * @brief  Função genérica que implementa o ciclo de vida de cada carro.
+  * @param  argument: Ponteiro para CarroInfo_t
   * @retval None
   */
-/* USER CODE END Header_TaskInterfaceFun */
-void TaskInterfaceFun(void *argument)
+/* USER CODE END Header_TaskCarroFun */
+void TaskCarroFun(void *argument)
 {
-  /* USER CODE BEGIN TaskInterfaceFun */
-  char msg[80];
+  /* USER CODE BEGIN TaskCarroFun */
+  CarroInfo_t *carro = (CarroInfo_t *)argument;
+  char msg[110];
+
   /* Infinite loop */
   for(;;)
   {
-    snprintf(msg, sizeof(msg), "[%lu] [INTERFACE] [Prioridade: %s] Atualizando tela\r\n",
+    /* 1. Tentativa de entrada */
+    snprintf(msg, sizeof(msg), "[%lu] [%s] [Prioridade: %s] Tentando entrar... Aguardando vaga.\r\n",
              (unsigned long)++ordemExecucao,
+             carro->nome,
              GetPriorityName(osThreadGetPriority(osThreadGetId())));
+    while (huart1.gState != HAL_UART_STATE_READY) osDelay(1);
     HAL_UART_Transmit(&huart1, (uint8_t *)msg, strlen(msg), 100);
-    osDelay(1000);
 
-    /* --- DESAFIO (Starvation) ---
-     * Descomente as linhas abaixo para simular uso intensivo de CPU sem bloqueio:
-     * for(volatile uint32_t i = 0; i < 20000000; i++);
-     */
-  }
-  /* USER CODE END TaskInterfaceFun */
-}
-
-/* USER CODE BEGIN Header_TaskProcessoFun */
-/**
-* @brief Function implementing the TaskProcesso thread.
-* @param argument: Not used
-* @retval None
-*/
-/* USER CODE END Header_TaskProcessoFun */
-void TaskProcessoFun(void *argument)
-{
-  /* USER CODE BEGIN TaskProcessoFun */
-  char msg[80];
-  /* Infinite loop */
-  for(;;)
-  {
-    snprintf(msg, sizeof(msg), "[%lu] [PROCESSO] [Prioridade: %s] Executando ciclo\r\n",
+    /* 2. Entrada autorizada (bloqueia aqui se as vagas estiverem esgotadas) */
+    osSemaphoreAcquire(vagasHandle, osWaitForever);
+    snprintf(msg, sizeof(msg), "[%lu] [%s] [Prioridade: %s] Entrada autorizada! Estacionou na vaga.\r\n",
              (unsigned long)++ordemExecucao,
+             carro->nome,
              GetPriorityName(osThreadGetPriority(osThreadGetId())));
+    while (huart1.gState != HAL_UART_STATE_READY) osDelay(1);
     HAL_UART_Transmit(&huart1, (uint8_t *)msg, strlen(msg), 100);
-    osDelay(1000);
-  }
-  /* USER CODE END TaskProcessoFun */
-}
 
-/* USER CODE BEGIN Header_TaskEmergenciaFun */
-/**
-* @brief Function implementing the TaskEmergencia thread.
-* @param argument: Not used
-* @retval None
-*/
-/* USER CODE END Header_TaskEmergenciaFun */
-void TaskEmergenciaFun(void *argument)
-{
-  /* USER CODE BEGIN TaskEmergenciaFun */
-  char msg[80];
-  /* Infinite loop */
-  for(;;)
-  {
-    snprintf(msg, sizeof(msg), "[%lu] [EMERGENCIA] [Prioridade: %s] Monitorando alarme\r\n",
+    /* 3. Permanência no estacionamento */
+    osDelay(carro->tempoEstacionadoMs / 2);
+    snprintf(msg, sizeof(msg), "[%lu] [%s] [Prioridade: %s] Permanecendo no estacionamento...\r\n",
              (unsigned long)++ordemExecucao,
+             carro->nome,
              GetPriorityName(osThreadGetPriority(osThreadGetId())));
+    while (huart1.gState != HAL_UART_STATE_READY) osDelay(1);
     HAL_UART_Transmit(&huart1, (uint8_t *)msg, strlen(msg), 100);
-    osDelay(1000);
+    osDelay(carro->tempoEstacionadoMs / 2);
+
+    /* 4. Saída do estacionamento */
+    snprintf(msg, sizeof(msg), "[%lu] [%s] [Prioridade: %s] Saindo do estacionamento...\r\n",
+             (unsigned long)++ordemExecucao,
+             carro->nome,
+             GetPriorityName(osThreadGetPriority(osThreadGetId())));
+    while (huart1.gState != HAL_UART_STATE_READY) osDelay(1);
+    HAL_UART_Transmit(&huart1, (uint8_t *)msg, strlen(msg), 100);
+
+    /* 5. Liberação da vaga (imprime o aviso antes de liberar o semáforo para o próximo carro) */
+    snprintf(msg, sizeof(msg), "[%lu] [%s] [Prioridade: %s] Vaga liberada com sucesso!\r\n",
+             (unsigned long)++ordemExecucao,
+             carro->nome,
+             GetPriorityName(osThreadGetPriority(osThreadGetId())));
+    while (huart1.gState != HAL_UART_STATE_READY) osDelay(1);
+    HAL_UART_Transmit(&huart1, (uint8_t *)msg, strlen(msg), 100);
+
+    /* Libera efetivamente o semáforo para desbloquear o próximo carro */
+    osSemaphoreRelease(vagasHandle);
+
+    /* Tempo passeando na rua antes de tentar estacionar novamente */
+    osDelay(carro->tempoRuaMs);
   }
-  /* USER CODE END TaskEmergenciaFun */
+  /* USER CODE END TaskCarroFun */
 }
 
 /* Private application code --------------------------------------------------*/
 /* USER CODE BEGIN Application */
 
 /* USER CODE END Application */
+
 

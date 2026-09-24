@@ -32,11 +32,22 @@
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
+/* 1. Enum com os estados da Máquina de Estados Finita (FSM) de cada veículo */
+typedef enum {
+  ESTADO_AGUARDANDO_VAGA = 0,
+  ESTADO_ESTACIONADO,
+  ESTADO_PERMANECENDO,
+  ESTADO_SAINDO,
+  ESTADO_VAGA_LIBERADA
+} EstadoCarro_t;
+
+/* 2. Struct que encapsula os atributos e o estado atual de cada veículo */
 typedef struct {
   const char *nome;
   uint32_t tempoEstacionadoMs;
   uint32_t tempoRuaMs;
-} CarroInfo_t;
+  EstadoCarro_t estado;
+} Carro_t;
 
 static inline const char* GetPriorityName(osPriority_t prio)
 {
@@ -46,6 +57,19 @@ static inline const char* GetPriorityName(osPriority_t prio)
     case osPriorityNormal: return "NORMAL";
     case osPriorityHigh:   return "HIGH";
     default:               return "CUSTOM";
+  }
+}
+
+static inline const char* GetEstadoDescricao(EstadoCarro_t estado)
+{
+  switch (estado)
+  {
+    case ESTADO_AGUARDANDO_VAGA: return "Tentando entrar... Aguardando vaga.";
+    case ESTADO_ESTACIONADO:     return "Entrada autorizada! Estacionou na vaga.";
+    case ESTADO_PERMANECENDO:    return "Permanecendo no estacionamento...";
+    case ESTADO_SAINDO:          return "Saindo do estacionamento...";
+    case ESTADO_VAGA_LIBERADA:   return "Vaga liberada com sucesso!";
+    default:                     return "";
   }
 }
 /* USER CODE END PTD */
@@ -71,15 +95,6 @@ const osSemaphoreAttr_t vagas_attributes = {
   .name = "vagasSem"
 };
 
-/* Configuração dos 5 veículos com tempos dinâmicos para simulação realista */
-static const CarroInfo_t carrosInfo[5] = {
-  { "Carro 1", 3000, 2000 },
-  { "Carro 2", 2000, 2500 },
-  { "Carro 3", 4000, 2000 },
-  { "Carro 4", 2500, 3000 },
-  { "Carro 5", 3500, 2000 },
-};
-
 /* Handles das 5 tarefas */
 osThreadId_t Carro1Handle;
 osThreadId_t Carro2Handle;
@@ -97,7 +112,12 @@ const osThreadAttr_t Carro5_attributes = { .name = "Carro5", .stack_size = 256 *
 
 /* Private function prototypes -----------------------------------------------*/
 /* USER CODE BEGIN FunctionPrototypes */
-void TaskCarroFun(void *argument);
+void AtualizarStatusCarro(Carro_t *carro, EstadoCarro_t novoEstado);
+void Carro1Task(void *argument);
+void Carro2Task(void *argument);
+void Carro3Task(void *argument);
+void Carro4Task(void *argument);
+void Carro5Task(void *argument);
 /* USER CODE END FunctionPrototypes */
 
 void MX_FREERTOS_Init(void); /* (MISRA C 2004 rule 8.1) */
@@ -131,11 +151,11 @@ void MX_FREERTOS_Init(void) {
 
   /* Create the thread(s) */
   /* USER CODE BEGIN RTOS_THREADS */
-  Carro1Handle = osThreadNew(TaskCarroFun, (void *)&carrosInfo[0], &Carro1_attributes);
-  Carro2Handle = osThreadNew(TaskCarroFun, (void *)&carrosInfo[1], &Carro2_attributes);
-  Carro3Handle = osThreadNew(TaskCarroFun, (void *)&carrosInfo[2], &Carro3_attributes);
-  Carro4Handle = osThreadNew(TaskCarroFun, (void *)&carrosInfo[3], &Carro4_attributes);
-  Carro5Handle = osThreadNew(TaskCarroFun, (void *)&carrosInfo[4], &Carro5_attributes);
+  Carro1Handle = osThreadNew(Carro1Task, NULL, &Carro1_attributes);
+  Carro2Handle = osThreadNew(Carro2Task, NULL, &Carro2_attributes);
+  Carro3Handle = osThreadNew(Carro3Task, NULL, &Carro3_attributes);
+  Carro4Handle = osThreadNew(Carro4Task, NULL, &Carro4_attributes);
+  Carro5Handle = osThreadNew(Carro5Task, NULL, &Carro5_attributes);
   /* USER CODE END RTOS_THREADS */
 
   /* USER CODE BEGIN RTOS_EVENTS */
@@ -144,87 +164,246 @@ void MX_FREERTOS_Init(void) {
 
 }
 
-/* USER CODE BEGIN Header_TaskCarroFun */
+/* USER CODE BEGIN Header_Carro1Task */
 /**
-  * @brief  Função genérica que implementa o ciclo de vida de cada carro.
-  * @param  argument: Ponteiro para CarroInfo_t
+  * @brief  Tarefa do Carro 1: Simula ciclo de vida com tempos de 3000ms (vaga) e 2000ms (rua).
+  * @param  argument: Não utilizado
   * @retval None
   */
-/* USER CODE END Header_TaskCarroFun */
-void TaskCarroFun(void *argument)
+/* USER CODE END Header_Carro1Task */
+void Carro1Task(void *argument)
 {
-  /* USER CODE BEGIN TaskCarroFun */
-  CarroInfo_t *carro = (CarroInfo_t *)argument;
-  char msg[128];
+  /* USER CODE BEGIN Carro1Task */
+  static Carro_t carro1 = {
+    .nome = "Carro 1",
+    .tempoEstacionadoMs = 3000,
+    .tempoRuaMs = 2000,
+    .estado = ESTADO_AGUARDANDO_VAGA
+  };
 
-  /* Infinite loop */
   for(;;)
   {
-    /* -------------------------------------------------------------------------
-     * 1. Tentativa de Entrada: Carro chega e solicita vaga
-     * ------------------------------------------------------------------------- */
-    while (huart1.gState != HAL_UART_STATE_READY) osDelay(1);
-    snprintf(msg, sizeof(msg), "[%lu] [%s] [Prioridade: %s] Tentando entrar... Aguardando vaga.\r\n",
-             (unsigned long)++ordemExecucao,
-             carro->nome,
-             GetPriorityName(osThreadGetPriority(osThreadGetId())));
-    HAL_UART_Transmit(&huart1, (uint8_t *)msg, strlen(msg), 100);
+    /* 1. Tentativa de Entrada */
+    AtualizarStatusCarro(&carro1, ESTADO_AGUARDANDO_VAGA);
 
-    /* -------------------------------------------------------------------------
-     * 2. Aquisição do Recurso: Bloqueia no semáforo se não houver vagas livres
-     * ------------------------------------------------------------------------- */
+    /* 2. Aquisição do Recurso: Bloqueia se as vagas estiverem esgotadas */
     osSemaphoreAcquire(vagasHandle, osWaitForever);
-    while (huart1.gState != HAL_UART_STATE_READY) osDelay(1);
-    snprintf(msg, sizeof(msg), "[%lu] [%s] [Prioridade: %s] Entrada autorizada! Estacionou na vaga.\r\n",
-             (unsigned long)++ordemExecucao,
-             carro->nome,
-             GetPriorityName(osThreadGetPriority(osThreadGetId())));
-    HAL_UART_Transmit(&huart1, (uint8_t *)msg, strlen(msg), 100);
+    AtualizarStatusCarro(&carro1, ESTADO_ESTACIONADO);
 
-    /* -------------------------------------------------------------------------
-     * 3. Permanência: Veículo ocupa a vaga pelo tempo determinado
-     * ------------------------------------------------------------------------- */
-    osDelay(carro->tempoEstacionadoMs / 2);
-    while (huart1.gState != HAL_UART_STATE_READY) osDelay(1);
-    snprintf(msg, sizeof(msg), "[%lu] [%s] [Prioridade: %s] Permanecendo no estacionamento...\r\n",
-             (unsigned long)++ordemExecucao,
-             carro->nome,
-             GetPriorityName(osThreadGetPriority(osThreadGetId())));
-    HAL_UART_Transmit(&huart1, (uint8_t *)msg, strlen(msg), 100);
-    osDelay(carro->tempoEstacionadoMs / 2);
+    /* 3. Permanência no Estacionamento */
+    osDelay(carro1.tempoEstacionadoMs / 2);
+    AtualizarStatusCarro(&carro1, ESTADO_PERMANECENDO);
+    osDelay(carro1.tempoEstacionadoMs / 2);
 
-    /* -------------------------------------------------------------------------
-     * 4. Saída do Estacionamento: Notifica que está deixando a vaga
-     * ------------------------------------------------------------------------- */
-    while (huart1.gState != HAL_UART_STATE_READY) osDelay(1);
-    snprintf(msg, sizeof(msg), "[%lu] [%s] [Prioridade: %s] Saindo do estacionamento...\r\n",
-             (unsigned long)++ordemExecucao,
-             carro->nome,
-             GetPriorityName(osThreadGetPriority(osThreadGetId())));
-    HAL_UART_Transmit(&huart1, (uint8_t *)msg, strlen(msg), 100);
+    /* 4. Saída do Estacionamento */
+    AtualizarStatusCarro(&carro1, ESTADO_SAINDO);
 
-    /* -------------------------------------------------------------------------
-     * 5. Liberação da Vaga: Devolve o token ao semáforo contador
-     * ------------------------------------------------------------------------- */
-    while (huart1.gState != HAL_UART_STATE_READY) osDelay(1);
-    snprintf(msg, sizeof(msg), "[%lu] [%s] [Prioridade: %s] Vaga liberada com sucesso!\r\n",
-             (unsigned long)++ordemExecucao,
-             carro->nome,
-             GetPriorityName(osThreadGetPriority(osThreadGetId())));
-    HAL_UART_Transmit(&huart1, (uint8_t *)msg, strlen(msg), 100);
-
-    /* Libera o token do semáforo, desbloqueando a próxima tarefa em espera */
+    /* 5. Liberação da Vaga */
+    AtualizarStatusCarro(&carro1, ESTADO_VAGA_LIBERADA);
     osSemaphoreRelease(vagasHandle);
 
-    /* Tempo transitando na rua antes da próxima tentativa */
-    osDelay(carro->tempoRuaMs);
+    /* Tempo transitando na rua */
+    osDelay(carro1.tempoRuaMs);
   }
-  /* USER CODE END TaskCarroFun */
+  /* USER CODE END Carro1Task */
+}
+
+/* USER CODE BEGIN Header_Carro2Task */
+/**
+  * @brief  Tarefa do Carro 2: Simula ciclo de vida com tempos de 2000ms (vaga) e 2500ms (rua).
+  * @param  argument: Não utilizado
+  * @retval None
+  */
+/* USER CODE END Header_Carro2Task */
+void Carro2Task(void *argument)
+{
+  /* USER CODE BEGIN Carro2Task */
+  static Carro_t carro2 = {
+    .nome = "Carro 2",
+    .tempoEstacionadoMs = 2000,
+    .tempoRuaMs = 2500,
+    .estado = ESTADO_AGUARDANDO_VAGA
+  };
+
+  for(;;)
+  {
+    /* 1. Tentativa de Entrada */
+    AtualizarStatusCarro(&carro2, ESTADO_AGUARDANDO_VAGA);
+
+    /* 2. Aquisição do Recurso: Bloqueia se as vagas estiverem esgotadas */
+    osSemaphoreAcquire(vagasHandle, osWaitForever);
+    AtualizarStatusCarro(&carro2, ESTADO_ESTACIONADO);
+
+    /* 3. Permanência no Estacionamento */
+    osDelay(carro2.tempoEstacionadoMs / 2);
+    AtualizarStatusCarro(&carro2, ESTADO_PERMANECENDO);
+    osDelay(carro2.tempoEstacionadoMs / 2);
+
+    /* 4. Saída do Estacionamento */
+    AtualizarStatusCarro(&carro2, ESTADO_SAINDO);
+
+    /* 5. Liberação da Vaga */
+    AtualizarStatusCarro(&carro2, ESTADO_VAGA_LIBERADA);
+    osSemaphoreRelease(vagasHandle);
+
+    /* Tempo transitando na rua */
+    osDelay(carro2.tempoRuaMs);
+  }
+  /* USER CODE END Carro2Task */
+}
+
+/* USER CODE BEGIN Header_Carro3Task */
+/**
+  * @brief  Tarefa do Carro 3: Simula ciclo de vida com tempos de 4000ms (vaga) e 2000ms (rua).
+  * @param  argument: Não utilizado
+  * @retval None
+  */
+/* USER CODE END Header_Carro3Task */
+void Carro3Task(void *argument)
+{
+  /* USER CODE BEGIN Carro3Task */
+  static Carro_t carro3 = {
+    .nome = "Carro 3",
+    .tempoEstacionadoMs = 4000,
+    .tempoRuaMs = 2000,
+    .estado = ESTADO_AGUARDANDO_VAGA
+  };
+
+  for(;;)
+  {
+    /* 1. Tentativa de Entrada */
+    AtualizarStatusCarro(&carro3, ESTADO_AGUARDANDO_VAGA);
+
+    /* 2. Aquisição do Recurso: Bloqueia se as vagas estiverem esgotadas */
+    osSemaphoreAcquire(vagasHandle, osWaitForever);
+    AtualizarStatusCarro(&carro3, ESTADO_ESTACIONADO);
+
+    /* 3. Permanência no Estacionamento */
+    osDelay(carro3.tempoEstacionadoMs / 2);
+    AtualizarStatusCarro(&carro3, ESTADO_PERMANECENDO);
+    osDelay(carro3.tempoEstacionadoMs / 2);
+
+    /* 4. Saída do Estacionamento */
+    AtualizarStatusCarro(&carro3, ESTADO_SAINDO);
+
+    /* 5. Liberação da Vaga */
+    AtualizarStatusCarro(&carro3, ESTADO_VAGA_LIBERADA);
+    osSemaphoreRelease(vagasHandle);
+
+    /* Tempo transitando na rua */
+    osDelay(carro3.tempoRuaMs);
+  }
+  /* USER CODE END Carro3Task */
+}
+
+/* USER CODE BEGIN Header_Carro4Task */
+/**
+  * @brief  Tarefa do Carro 4: Simula ciclo de vida com tempos de 2500ms (vaga) e 3000ms (rua).
+  * @param  argument: Não utilizado
+  * @retval None
+  */
+/* USER CODE END Header_Carro4Task */
+void Carro4Task(void *argument)
+{
+  /* USER CODE BEGIN Carro4Task */
+  static Carro_t carro4 = {
+    .nome = "Carro 4",
+    .tempoEstacionadoMs = 2500,
+    .tempoRuaMs = 3000,
+    .estado = ESTADO_AGUARDANDO_VAGA
+  };
+
+  for(;;)
+  {
+    /* 1. Tentativa de Entrada */
+    AtualizarStatusCarro(&carro4, ESTADO_AGUARDANDO_VAGA);
+
+    /* 2. Aquisição do Recurso: Bloqueia se as vagas estiverem esgotadas */
+    osSemaphoreAcquire(vagasHandle, osWaitForever);
+    AtualizarStatusCarro(&carro4, ESTADO_ESTACIONADO);
+
+    /* 3. Permanência no Estacionamento */
+    osDelay(carro4.tempoEstacionadoMs / 2);
+    AtualizarStatusCarro(&carro4, ESTADO_PERMANECENDO);
+    osDelay(carro4.tempoEstacionadoMs / 2);
+
+    /* 4. Saída do Estacionamento */
+    AtualizarStatusCarro(&carro4, ESTADO_SAINDO);
+
+    /* 5. Liberação da Vaga */
+    AtualizarStatusCarro(&carro4, ESTADO_VAGA_LIBERADA);
+    osSemaphoreRelease(vagasHandle);
+
+    /* Tempo transitando na rua */
+    osDelay(carro4.tempoRuaMs);
+  }
+  /* USER CODE END Carro4Task */
+}
+
+/* USER CODE BEGIN Header_Carro5Task */
+/**
+  * @brief  Tarefa do Carro 5: Simula ciclo de vida com tempos de 3500ms (vaga) e 2000ms (rua).
+  * @param  argument: Não utilizado
+  * @retval None
+  */
+/* USER CODE END Header_Carro5Task */
+void Carro5Task(void *argument)
+{
+  /* USER CODE BEGIN Carro5Task */
+  static Carro_t carro5 = {
+    .nome = "Carro 5",
+    .tempoEstacionadoMs = 3500,
+    .tempoRuaMs = 2000,
+    .estado = ESTADO_AGUARDANDO_VAGA
+  };
+
+  for(;;)
+  {
+    /* 1. Tentativa de Entrada */
+    AtualizarStatusCarro(&carro5, ESTADO_AGUARDANDO_VAGA);
+
+    /* 2. Aquisição do Recurso: Bloqueia se as vagas estiverem esgotadas */
+    osSemaphoreAcquire(vagasHandle, osWaitForever);
+    AtualizarStatusCarro(&carro5, ESTADO_ESTACIONADO);
+
+    /* 3. Permanência no Estacionamento */
+    osDelay(carro5.tempoEstacionadoMs / 2);
+    AtualizarStatusCarro(&carro5, ESTADO_PERMANECENDO);
+    osDelay(carro5.tempoEstacionadoMs / 2);
+
+    /* 4. Saída do Estacionamento */
+    AtualizarStatusCarro(&carro5, ESTADO_SAINDO);
+
+    /* 5. Liberação da Vaga */
+    AtualizarStatusCarro(&carro5, ESTADO_VAGA_LIBERADA);
+    osSemaphoreRelease(vagasHandle);
+
+    /* Tempo transitando na rua */
+    osDelay(carro5.tempoRuaMs);
+  }
+  /* USER CODE END Carro5Task */
 }
 
 /* Private application code --------------------------------------------------*/
 /* USER CODE BEGIN Application */
-
+/**
+  * @brief  Atualiza o estado do veículo e transmite o log correspondente via UART.
+  * @param  carro: Ponteiro para a struct Carro_t
+  * @param  novoEstado: Novo estado da máquina de estados do carro
+  * @retval None
+  */
+void AtualizarStatusCarro(Carro_t *carro, EstadoCarro_t novoEstado)
+{
+  carro->estado = novoEstado;
+  char msg[128];
+  while (huart1.gState != HAL_UART_STATE_READY) osDelay(1);
+  snprintf(msg, sizeof(msg), "[%lu] [%s] [Prioridade: %s] %s\r\n",
+           (unsigned long)++ordemExecucao,
+           carro->nome,
+           GetPriorityName(osThreadGetPriority(osThreadGetId())),
+           GetEstadoDescricao(carro->estado));
+  HAL_UART_Transmit(&huart1, (uint8_t *)msg, strlen(msg), 100);
+}
 /* USER CODE END Application */
 
 

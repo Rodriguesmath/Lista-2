@@ -25,8 +25,9 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include "usart.h"
 #include <stdio.h>
+#include "usart.h"
+// #include <stdbool.h" - EXPERIMENTO POLLING
 
 /* USER CODE END Includes */
 
@@ -47,9 +48,8 @@
 
 /* Private variables ---------------------------------------------------------*/
 /* USER CODE BEGIN Variables */
-volatile uint32_t countSensor = 0;
-volatile uint32_t countDisplay = 0;
-volatile uint32_t countDiagnostico = 0;
+
+// volatile bool novoDado = false; - EXPERIMENTO POLLING
 
 /* USER CODE END Variables */
 /* Definitions for TaskSensor */
@@ -58,22 +58,18 @@ const osThreadAttr_t TaskSensor_attributes = {
   .name = "TaskSensor",
   .stack_size = 128 * 4,
   .priority = (osPriority_t) osPriorityNormal,
-  // .priority = (osPriority_t) osPriorityHigh, - EXPERIMENTO B e C
 };
-/* Definitions for TaskDisplay */
-osThreadId_t TaskDisplayHandle;
-const osThreadAttr_t TaskDisplay_attributes = {
-  .name = "TaskDisplay",
+/* Definitions for TaskProcessamen */
+osThreadId_t TaskProcessamenHandle;
+const osThreadAttr_t TaskProcessamen_attributes = {
+  .name = "TaskProcessamen",
   .stack_size = 128 * 4,
   .priority = (osPriority_t) osPriorityNormal,
 };
-/* Definitions for TaskDiagnostico */
-osThreadId_t TaskDiagnosticoHandle;
-const osThreadAttr_t TaskDiagnostico_attributes = {
-  .name = "TaskDiagnostico",
-  .stack_size = 128 * 4,
-  .priority = (osPriority_t) osPriorityNormal,
-  // .priority = (osPriority_t) osPriorityLow, - EXPERIMENTO B e C
+/* Definitions for sensorSem */
+osSemaphoreId_t sensorSemHandle;
+const osSemaphoreAttr_t sensorSem_attributes = {
+  .name = "sensorSem"
 };
 
 /* Private function prototypes -----------------------------------------------*/
@@ -82,8 +78,7 @@ const osThreadAttr_t TaskDiagnostico_attributes = {
 /* USER CODE END FunctionPrototypes */
 
 void TaskSensor_fun(void *argument);
-void TaskDisplay_fun(void *argument);
-void TaskDiagnostico_fun(void *argument);
+void TaskProcessamento_fun(void *argument);
 
 void MX_FREERTOS_Init(void); /* (MISRA C 2004 rule 8.1) */
 
@@ -101,6 +96,10 @@ void MX_FREERTOS_Init(void) {
   /* add mutexes, ... */
   /* USER CODE END RTOS_MUTEX */
 
+  /* Create the semaphores(s) */
+  /* creation of sensorSem */
+  sensorSemHandle = osSemaphoreNew(1, 1, &sensorSem_attributes);
+
   /* USER CODE BEGIN RTOS_SEMAPHORES */
   /* add semaphores, ... */
   /* USER CODE END RTOS_SEMAPHORES */
@@ -117,11 +116,8 @@ void MX_FREERTOS_Init(void) {
   /* creation of TaskSensor */
   TaskSensorHandle = osThreadNew(TaskSensor_fun, NULL, &TaskSensor_attributes);
 
-  /* creation of TaskDisplay */
-  TaskDisplayHandle = osThreadNew(TaskDisplay_fun, NULL, &TaskDisplay_attributes);
-
-  /* creation of TaskDiagnostico */
-  TaskDiagnosticoHandle = osThreadNew(TaskDiagnostico_fun, NULL, &TaskDiagnostico_attributes);
+  /* creation of TaskProcessamen */
+  TaskProcessamenHandle = osThreadNew(TaskProcessamento_fun, NULL, &TaskProcessamen_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
@@ -144,92 +140,90 @@ void TaskSensor_fun(void *argument)
 {
   /* USER CODE BEGIN TaskSensor_fun */
   /* Infinite loop */
+
+// EXPERIMENTO SEMÁFORO:
   for(;;)
   {
 	char mensagem[80];
 
-	for(;;)
-	{
-		countSensor++;
-		int tamanho = snprintf(
-			mensagem,
-			sizeof(mensagem),
-			"[Task Sensor] Execucao: %lu | Prioridade: %d\r\n",
-			(unsigned long)countSensor,
-			(int)osThreadGetPriority(TaskSensorHandle)
-		);
+	int tamanho = snprintf(
+		mensagem,
+		sizeof(mensagem),
+		"Novo Dado Disponivel!\r\n");
 
 	HAL_UART_Transmit(&huart1, (uint8_t*)mensagem, (uint16_t)tamanho, HAL_MAX_DELAY);
-	//	osDelay(1000); - EXPERIMENTO C
-	}
+
+	osSemaphoreRelease(sensorSemHandle);
+
+	osDelay(1000);
+
+	// EXPERIMENTO POLLING :
+//	  for(;;)
+//	  {
+//		char mensagem[80];
+//
+//		if (!novoDado)
+//		{
+//			novoDado = true;
+//
+//			int tamanho = snprintf(
+//				mensagem,
+//				sizeof(mensagem),
+//				"Novo Dado Disponivel!\r\n");
+//
+//			HAL_UART_Transmit(&huart1, (uint8_t*)mensagem, (uint16_t)tamanho, HAL_MAX_DELAY);
+//		}
+//	    osDelay(1000);
+
   }
   /* USER CODE END TaskSensor_fun */
 }
 
-/* USER CODE BEGIN Header_TaskDisplay_fun */
+/* USER CODE BEGIN Header_TaskProcessamento_fun */
 /**
-* @brief Function implementing the TaskDisplay thread.
+* @brief Function implementing the TaskProcessamen thread.
 * @param argument: Not used
 * @retval None
 */
-/* USER CODE END Header_TaskDisplay_fun */
-void TaskDisplay_fun(void *argument)
+/* USER CODE END Header_TaskProcessamento_fun */
+void TaskProcessamento_fun(void *argument)
 {
-  /* USER CODE BEGIN TaskDisplay_fun */
+  /* USER CODE BEGIN TaskProcessamento_fun */
   /* Infinite loop */
+
+// EXPERIMENTO SEMÁFORO:
   for(;;)
   {
+	osSemaphoreAcquire(sensorSemHandle, osWaitForever);
 	char mensagem[80];
 
-	for(;;)
-	{
-		countDisplay++;
-		int tamanho = snprintf(
-			mensagem,
-			sizeof(mensagem),
-			"[Task Display] Execucao: %lu | Prioridade: %d\r\n",
-			(unsigned long)countDisplay,
-			(int)osThreadGetPriority(TaskDisplayHandle)
-	);
+	int tamanho = snprintf(
+		mensagem,
+		sizeof(mensagem),
+		"Dado trabalhado com sucesso!\r\n");
 
 	HAL_UART_Transmit(&huart1, (uint8_t*)mensagem, (uint16_t)tamanho, HAL_MAX_DELAY);
-	//	osDelay(1000); - EXPERIMENTO C
-	}
   }
-  /* USER CODE END TaskDisplay_fun */
-}
 
-/* USER CODE BEGIN Header_TaskDiagnostico_fun */
-/**
-* @brief Function implementing the TaskDiagnostico thread.
-* @param argument: Not used
-* @retval None
-*/
-/* USER CODE END Header_TaskDiagnostico_fun */
-void TaskDiagnostico_fun(void *argument)
-{
-  /* USER CODE BEGIN TaskDiagnostico_fun */
-  /* Infinite loop */
-  for(;;)
-  {
-	char mensagem[80];
+  // EXPERIMENTO POLLING:
+//  for(;;)
+//  {
+//	char mensagem[80];
+//
+//	if (novoDado)
+//	{
+//		novoDado = false;
+//
+//		int tamanho = snprintf(
+//			mensagem,
+//			sizeof(mensagem),
+//			"Dado trabalhado com sucesso!\r\n");
+//
+//		HAL_UART_Transmit(&huart1, (uint8_t*)mensagem, (uint16_t)tamanho, HAL_MAX_DELAY);
+//	}
+//	osDelay(1000);
 
-	for(;;)
-	{
-		countDiagnostico++;
-		int tamanho = snprintf(
-			mensagem,
-			sizeof(mensagem),
-			"[Task Diagnostico] Execucao: %lu | Prioridade: %d\r\n",
-			(unsigned long)countDiagnostico,
-			(int)osThreadGetPriority(TaskDiagnosticoHandle)
-	);
-
-	HAL_UART_Transmit(&huart1, (uint8_t*)mensagem, (uint16_t)tamanho, HAL_MAX_DELAY);
-	//	osDelay(1000); - EXPERIMENTO C
-	}
-  }
-  /* USER CODE END TaskDiagnostico_fun */
+  /* USER CODE END TaskProcessamento_fun */
 }
 
 /* Private application code --------------------------------------------------*/

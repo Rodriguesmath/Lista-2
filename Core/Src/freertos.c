@@ -136,21 +136,19 @@ void TaskSensor_fun(void *argument)
 {
   /* USER CODE BEGIN TaskSensor_fun */
   /* Infinite loop */
-
-	// int cicloSensor = 0; - EXPRIMENTO TESTE
+  int cicloSensor = 0;
 
   for(;;)
   {
-	osMutexAcquire(uartMutexHandle, osWaitForever); // EXPERIMENTO COM MUTEX
-	// cicloSensor++; EXPERIMENTO TESTE
+	cicloSensor++;
 
-	for (int i = 0; i < 50; i++)
-	{
-	  char msg[] = "SENSOR...\r\n";
-	  // int tamanho = snprintf(msg, sizeof(msg), "[Ciclo %d] SENSOR...\r\n", cicloSensor); EXPERIMENTO TESTE
-	  HAL_UART_Transmit(&huart1, (uint8_t*)msg, sizeof(msg)-1, HAL_MAX_DELAY);
-	  //HAL_UART_Transmit(&huart1, (uint8_t*)msg, (uint16_t)tamanho, HAL_MAX_DELAY); EXPERIMENTO TESTE
-	}
+	osMutexAcquire(uartMutexHandle, osWaitForever);
+
+	char msg[80];
+	int tamanho = snprintf(msg, sizeof(msg), "[Ciclo %d] SENSOR pegou a UART e vai demorar...\r\n", cicloSensor);
+	HAL_UART_Transmit(&huart1, (uint8_t*)msg, (uint16_t)tamanho, HAL_MAX_DELAY);
+
+	osDelay(500);
 
 	osMutexRelease(uartMutexHandle);
 
@@ -170,23 +168,30 @@ void TaskControle_fun(void *argument)
 {
   /* USER CODE BEGIN TaskControle_fun */
   /* Infinite loop */
-	// 	int cicloControle = 0; - EXPERIMENTO TESTE
+  int atividadesAlternativas = 0;
+
   for(;;)
   {
-	osMutexAcquire(uartMutexHandle, osWaitForever); // EXPERIMENTO COM MUTEX
-	//cicloControle++; EXPERIMENTO TESTE
-
-	for (int i = 0; i < 50; i++)
+	if (osMutexAcquire(uartMutexHandle, 0) == osOK)
 	{
-	  char msg[] = "CONTROLE...\r\n";
-	  //int tamanho = snprintf(msg, sizeof(msg), "[Ciclo %d] CONTROLE...\r\n", cicloControle); EXPERIMENTO TESTE
-	  HAL_UART_Transmit(&huart1, (uint8_t*)msg, sizeof(msg)-1, HAL_MAX_DELAY);
-      //HAL_UART_Transmit(&huart1, (uint8_t*)msg, (uint16_t)tamanho, HAL_MAX_DELAY); EXPERIMENTO TESTE
+	  char msg[100];
+	  int tamanho = snprintf(msg, sizeof(msg),
+		  "CONTROLE conseguiu a UART! (Fez %d outras atividades enquanto esperava)\r\n",
+		  atividadesAlternativas);
+
+	  HAL_UART_Transmit(&huart1, (uint8_t*)msg, (uint16_t)tamanho, HAL_MAX_DELAY);
+
+	  atividadesAlternativas = 0;
+
+	  osMutexRelease(uartMutexHandle);
+	}
+	else
+	{
+	  atividadesAlternativas++;
+
 	}
 
-	osMutexRelease(uartMutexHandle);
-
-	osDelay(1000);
+	osDelay(100);
   }
   /* USER CODE END TaskControle_fun */
 }

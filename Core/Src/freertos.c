@@ -58,6 +58,7 @@ const osThreadAttr_t TaskSensor_attributes = {
   .name = "TaskSensor",
   .stack_size = 128 * 4,
   .priority = (osPriority_t) osPriorityNormal,
+  // .priority = (osPriority_t) osPriorityHigh, - EXPERIMENTO B e C
 };
 /* Definitions for TaskDisplay */
 osThreadId_t TaskDisplayHandle;
@@ -72,6 +73,7 @@ const osThreadAttr_t TaskDiagnostico_attributes = {
   .name = "TaskDiagnostico",
   .stack_size = 128 * 4,
   .priority = (osPriority_t) osPriorityNormal,
+  // .priority = (osPriority_t) osPriorityLow, - EXPERIMENTO B e C
 };
 
 /* Private function prototypes -----------------------------------------------*/
@@ -157,7 +159,8 @@ void TaskSensor_fun(void *argument)
 			(int)osThreadGetPriority(TaskSensorHandle)
 		);
 
-		HAL_UART_Transmit(&huart1, (uint8_t*)mensagem, (uint16_t)tamanho, HAL_MAX_DELAY);
+	HAL_UART_Transmit(&huart1, (uint8_t*)mensagem, (uint16_t)tamanho, HAL_MAX_DELAY);
+	//	osDelay(1000); - EXPERIMENTO C
 	}
   }
   /* USER CODE END TaskSensor_fun */
@@ -190,6 +193,7 @@ void TaskDisplay_fun(void *argument)
 	);
 
 	HAL_UART_Transmit(&huart1, (uint8_t*)mensagem, (uint16_t)tamanho, HAL_MAX_DELAY);
+	//	osDelay(1000); - EXPERIMENTO C
 	}
   }
   /* USER CODE END TaskDisplay_fun */
@@ -222,6 +226,7 @@ void TaskDiagnostico_fun(void *argument)
 	);
 
 	HAL_UART_Transmit(&huart1, (uint8_t*)mensagem, (uint16_t)tamanho, HAL_MAX_DELAY);
+	//	osDelay(1000); - EXPERIMENTO C
 	}
   }
   /* USER CODE END TaskDiagnostico_fun */

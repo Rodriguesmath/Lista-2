@@ -25,29 +25,14 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include <stdio.h>
-#include <string.h>
 #include "usart.h"
+#include <stdio.h>
+
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-typedef enum {
-  PRIO_LOW    = osPriorityLow,
-  PRIO_NORMAL = osPriorityNormal,
-  PRIO_HIGH   = osPriorityHigh
-} Prioridade_t;
 
-static inline const char* GetPriorityName(osPriority_t prio)
-{
-  switch (prio)
-  {
-    case osPriorityLow:    return "LOW";
-    case osPriorityNormal: return "NORMAL";
-    case osPriorityHigh:   return "HIGH";
-    default:               return "CUSTOM";
-  }
-}
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -62,28 +47,31 @@ static inline const char* GetPriorityName(osPriority_t prio)
 
 /* Private variables ---------------------------------------------------------*/
 /* USER CODE BEGIN Variables */
-uint32_t ordemExecucao = 0;
+volatile uint32_t countSensor = 0;
+volatile uint32_t countDisplay = 0;
+volatile uint32_t countDiagnostico = 0;
+
 /* USER CODE END Variables */
-/* Definitions for TaskInterface */
-osThreadId_t TaskInterfaceHandle;
-const osThreadAttr_t TaskInterface_attributes = {
-  .name = "TaskInterface",
-  .stack_size = 256 * 4,
+/* Definitions for TaskSensor */
+osThreadId_t TaskSensorHandle;
+const osThreadAttr_t TaskSensor_attributes = {
+  .name = "TaskSensor",
+  .stack_size = 128 * 4,
   .priority = (osPriority_t) osPriorityNormal,
 };
-/* Definitions for TaskProcesso */
-osThreadId_t TaskProcessoHandle;
-const osThreadAttr_t TaskProcesso_attributes = {
-  .name = "TaskProcesso",
-  .stack_size = 256 * 4,
+/* Definitions for TaskDisplay */
+osThreadId_t TaskDisplayHandle;
+const osThreadAttr_t TaskDisplay_attributes = {
+  .name = "TaskDisplay",
+  .stack_size = 128 * 4,
   .priority = (osPriority_t) osPriorityNormal,
 };
-/* Definitions for TaskEmergencia */
-osThreadId_t TaskEmergenciaHandle;
-const osThreadAttr_t TaskEmergencia_attributes = {
-  .name = "TaskEmergencia",
-  .stack_size = 256 * 4,
-  .priority = (osPriority_t) osPriorityHigh, /* Experimentos: osPriorityLow, osPriorityNormal ou osPriorityHigh */
+/* Definitions for TaskDiagnostico */
+osThreadId_t TaskDiagnosticoHandle;
+const osThreadAttr_t TaskDiagnostico_attributes = {
+  .name = "TaskDiagnostico",
+  .stack_size = 128 * 4,
+  .priority = (osPriority_t) osPriorityNormal,
 };
 
 /* Private function prototypes -----------------------------------------------*/
@@ -91,9 +79,9 @@ const osThreadAttr_t TaskEmergencia_attributes = {
 
 /* USER CODE END FunctionPrototypes */
 
-void TaskInterfaceFun(void *argument);
-void TaskProcessoFun(void *argument);
-void TaskEmergenciaFun(void *argument);
+void TaskSensor_fun(void *argument);
+void TaskDisplay_fun(void *argument);
+void TaskDiagnostico_fun(void *argument);
 
 void MX_FREERTOS_Init(void); /* (MISRA C 2004 rule 8.1) */
 
@@ -124,14 +112,14 @@ void MX_FREERTOS_Init(void) {
   /* USER CODE END RTOS_QUEUES */
 
   /* Create the thread(s) */
-  /* creation of TaskInterface */
-  TaskInterfaceHandle = osThreadNew(TaskInterfaceFun, NULL, &TaskInterface_attributes);
+  /* creation of TaskSensor */
+  TaskSensorHandle = osThreadNew(TaskSensor_fun, NULL, &TaskSensor_attributes);
 
-  /* creation of TaskProcesso */
-  TaskProcessoHandle = osThreadNew(TaskProcessoFun, NULL, &TaskProcesso_attributes);
+  /* creation of TaskDisplay */
+  TaskDisplayHandle = osThreadNew(TaskDisplay_fun, NULL, &TaskDisplay_attributes);
 
-  /* creation of TaskEmergencia */
-  TaskEmergenciaHandle = osThreadNew(TaskEmergenciaFun, NULL, &TaskEmergencia_attributes);
+  /* creation of TaskDiagnostico */
+  TaskDiagnosticoHandle = osThreadNew(TaskDiagnostico_fun, NULL, &TaskDiagnostico_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
@@ -143,78 +131,100 @@ void MX_FREERTOS_Init(void) {
 
 }
 
-/* USER CODE BEGIN Header_TaskInterfaceFun */
+/* USER CODE BEGIN Header_TaskSensor_fun */
 /**
-  * @brief  Function implementing the TaskInterface thread.
+  * @brief  Function implementing the TaskSensor thread.
   * @param  argument: Not used
   * @retval None
   */
-/* USER CODE END Header_TaskInterfaceFun */
-void TaskInterfaceFun(void *argument)
+/* USER CODE END Header_TaskSensor_fun */
+void TaskSensor_fun(void *argument)
 {
-  /* USER CODE BEGIN TaskInterfaceFun */
-  char msg[80];
+  /* USER CODE BEGIN TaskSensor_fun */
   /* Infinite loop */
   for(;;)
   {
-    snprintf(msg, sizeof(msg), "[%lu] [INTERFACE] [Prioridade: %s] Atualizando tela\r\n",
-             (unsigned long)++ordemExecucao,
-             GetPriorityName(osThreadGetPriority(osThreadGetId())));
-    HAL_UART_Transmit(&huart1, (uint8_t *)msg, strlen(msg), 100);
-    osDelay(1000);
+	char mensagem[80];
 
-    /* --- DESAFIO (Starvation) ---
-     * Descomente as linhas abaixo para simular uso intensivo de CPU sem bloqueio:
-     * for(volatile uint32_t i = 0; i < 20000000; i++);
-     */
+	for(;;)
+	{
+		countSensor++;
+		int tamanho = snprintf(
+			mensagem,
+			sizeof(mensagem),
+			"[Task Sensor] Execucao: %lu | Prioridade: %d\r\n",
+			(unsigned long)countSensor,
+			(int)osThreadGetPriority(TaskSensorHandle)
+		);
+
+		HAL_UART_Transmit(&huart1, (uint8_t*)mensagem, (uint16_t)tamanho, HAL_MAX_DELAY);
+	}
   }
-  /* USER CODE END TaskInterfaceFun */
+  /* USER CODE END TaskSensor_fun */
 }
 
-/* USER CODE BEGIN Header_TaskProcessoFun */
+/* USER CODE BEGIN Header_TaskDisplay_fun */
 /**
-* @brief Function implementing the TaskProcesso thread.
+* @brief Function implementing the TaskDisplay thread.
 * @param argument: Not used
 * @retval None
 */
-/* USER CODE END Header_TaskProcessoFun */
-void TaskProcessoFun(void *argument)
+/* USER CODE END Header_TaskDisplay_fun */
+void TaskDisplay_fun(void *argument)
 {
-  /* USER CODE BEGIN TaskProcessoFun */
-  char msg[80];
+  /* USER CODE BEGIN TaskDisplay_fun */
   /* Infinite loop */
   for(;;)
   {
-    snprintf(msg, sizeof(msg), "[%lu] [PROCESSO] [Prioridade: %s] Executando ciclo\r\n",
-             (unsigned long)++ordemExecucao,
-             GetPriorityName(osThreadGetPriority(osThreadGetId())));
-    HAL_UART_Transmit(&huart1, (uint8_t *)msg, strlen(msg), 100);
-    osDelay(1000);
+	char mensagem[80];
+
+	for(;;)
+	{
+		countDisplay++;
+		int tamanho = snprintf(
+			mensagem,
+			sizeof(mensagem),
+			"[Task Display] Execucao: %lu | Prioridade: %d\r\n",
+			(unsigned long)countDisplay,
+			(int)osThreadGetPriority(TaskDisplayHandle)
+	);
+
+	HAL_UART_Transmit(&huart1, (uint8_t*)mensagem, (uint16_t)tamanho, HAL_MAX_DELAY);
+	}
   }
-  /* USER CODE END TaskProcessoFun */
+  /* USER CODE END TaskDisplay_fun */
 }
 
-/* USER CODE BEGIN Header_TaskEmergenciaFun */
+/* USER CODE BEGIN Header_TaskDiagnostico_fun */
 /**
-* @brief Function implementing the TaskEmergencia thread.
+* @brief Function implementing the TaskDiagnostico thread.
 * @param argument: Not used
 * @retval None
 */
-/* USER CODE END Header_TaskEmergenciaFun */
-void TaskEmergenciaFun(void *argument)
+/* USER CODE END Header_TaskDiagnostico_fun */
+void TaskDiagnostico_fun(void *argument)
 {
-  /* USER CODE BEGIN TaskEmergenciaFun */
-  char msg[80];
+  /* USER CODE BEGIN TaskDiagnostico_fun */
   /* Infinite loop */
   for(;;)
   {
-    snprintf(msg, sizeof(msg), "[%lu] [EMERGENCIA] [Prioridade: %s] Monitorando alarme\r\n",
-             (unsigned long)++ordemExecucao,
-             GetPriorityName(osThreadGetPriority(osThreadGetId())));
-    HAL_UART_Transmit(&huart1, (uint8_t *)msg, strlen(msg), 100);
-    osDelay(1000);
+	char mensagem[80];
+
+	for(;;)
+	{
+		countDiagnostico++;
+		int tamanho = snprintf(
+			mensagem,
+			sizeof(mensagem),
+			"[Task Diagnostico] Execucao: %lu | Prioridade: %d\r\n",
+			(unsigned long)countDiagnostico,
+			(int)osThreadGetPriority(TaskDiagnosticoHandle)
+	);
+
+	HAL_UART_Transmit(&huart1, (uint8_t*)mensagem, (uint16_t)tamanho, HAL_MAX_DELAY);
+	}
   }
-  /* USER CODE END TaskEmergenciaFun */
+  /* USER CODE END TaskDiagnostico_fun */
 }
 
 /* Private application code --------------------------------------------------*/

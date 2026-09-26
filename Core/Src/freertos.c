@@ -25,9 +25,8 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include <stdio.h>
 #include "usart.h"
-// #include <stdbool.h" - EXPERIMENTO POLLING
+#include <stdio.h>
 
 /* USER CODE END Includes */
 
@@ -49,8 +48,6 @@
 /* Private variables ---------------------------------------------------------*/
 /* USER CODE BEGIN Variables */
 
-// volatile bool novoDado = false; - EXPERIMENTO POLLING
-
 /* USER CODE END Variables */
 /* Definitions for TaskSensor */
 osThreadId_t TaskSensorHandle;
@@ -59,17 +56,17 @@ const osThreadAttr_t TaskSensor_attributes = {
   .stack_size = 128 * 4,
   .priority = (osPriority_t) osPriorityNormal,
 };
-/* Definitions for TaskProcessamen */
-osThreadId_t TaskProcessamenHandle;
-const osThreadAttr_t TaskProcessamen_attributes = {
-  .name = "TaskProcessamen",
+/* Definitions for TaskControle */
+osThreadId_t TaskControleHandle;
+const osThreadAttr_t TaskControle_attributes = {
+  .name = "TaskControle",
   .stack_size = 128 * 4,
   .priority = (osPriority_t) osPriorityNormal,
 };
-/* Definitions for sensorSem */
-osSemaphoreId_t sensorSemHandle;
-const osSemaphoreAttr_t sensorSem_attributes = {
-  .name = "sensorSem"
+/* Definitions for uartMutex */
+osMutexId_t uartMutexHandle;
+const osMutexAttr_t uartMutex_attributes = {
+  .name = "uartMutex"
 };
 
 /* Private function prototypes -----------------------------------------------*/
@@ -78,7 +75,7 @@ const osSemaphoreAttr_t sensorSem_attributes = {
 /* USER CODE END FunctionPrototypes */
 
 void TaskSensor_fun(void *argument);
-void TaskProcessamento_fun(void *argument);
+void TaskControle_fun(void *argument);
 
 void MX_FREERTOS_Init(void); /* (MISRA C 2004 rule 8.1) */
 
@@ -91,14 +88,13 @@ void MX_FREERTOS_Init(void) {
   /* USER CODE BEGIN Init */
 
   /* USER CODE END Init */
+  /* Create the mutex(es) */
+  /* creation of uartMutex */
+  uartMutexHandle = osMutexNew(&uartMutex_attributes);
 
   /* USER CODE BEGIN RTOS_MUTEX */
   /* add mutexes, ... */
   /* USER CODE END RTOS_MUTEX */
-
-  /* Create the semaphores(s) */
-  /* creation of sensorSem */
-  sensorSemHandle = osSemaphoreNew(1, 1, &sensorSem_attributes);
 
   /* USER CODE BEGIN RTOS_SEMAPHORES */
   /* add semaphores, ... */
@@ -116,8 +112,8 @@ void MX_FREERTOS_Init(void) {
   /* creation of TaskSensor */
   TaskSensorHandle = osThreadNew(TaskSensor_fun, NULL, &TaskSensor_attributes);
 
-  /* creation of TaskProcessamen */
-  TaskProcessamenHandle = osThreadNew(TaskProcessamento_fun, NULL, &TaskProcessamen_attributes);
+  /* creation of TaskControle */
+  TaskControleHandle = osThreadNew(TaskControle_fun, NULL, &TaskControle_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
@@ -141,89 +137,58 @@ void TaskSensor_fun(void *argument)
   /* USER CODE BEGIN TaskSensor_fun */
   /* Infinite loop */
 
-// EXPERIMENTO SEMÁFORO:
+	// int cicloSensor = 0; - EXPRIMENTO TESTE
+
   for(;;)
   {
-	char mensagem[80];
+	osMutexAcquire(uartMutexHandle, osWaitForever); // EXPERIMENTO COM MUTEX
+	// cicloSensor++; EXPERIMENTO TESTE
 
-	int tamanho = snprintf(
-		mensagem,
-		sizeof(mensagem),
-		"Novo Dado Disponivel!\r\n");
+	for (int i = 0; i < 50; i++)
+	{
+	  char msg[] = "SENSOR...\r\n";
+	  // int tamanho = snprintf(msg, sizeof(msg), "[Ciclo %d] SENSOR...\r\n", cicloSensor); EXPERIMENTO TESTE
+	  HAL_UART_Transmit(&huart1, (uint8_t*)msg, sizeof(msg)-1, HAL_MAX_DELAY);
+	  //HAL_UART_Transmit(&huart1, (uint8_t*)msg, (uint16_t)tamanho, HAL_MAX_DELAY); EXPERIMENTO TESTE
+	}
 
-	HAL_UART_Transmit(&huart1, (uint8_t*)mensagem, (uint16_t)tamanho, HAL_MAX_DELAY);
-
-	osSemaphoreRelease(sensorSemHandle);
+	osMutexRelease(uartMutexHandle);
 
 	osDelay(1000);
-
-	// EXPERIMENTO POLLING :
-//	  for(;;)
-//	  {
-//		char mensagem[80];
-//
-//		if (!novoDado)
-//		{
-//			novoDado = true;
-//
-//			int tamanho = snprintf(
-//				mensagem,
-//				sizeof(mensagem),
-//				"Novo Dado Disponivel!\r\n");
-//
-//			HAL_UART_Transmit(&huart1, (uint8_t*)mensagem, (uint16_t)tamanho, HAL_MAX_DELAY);
-//		}
-//	    osDelay(1000);
-
   }
   /* USER CODE END TaskSensor_fun */
 }
 
-/* USER CODE BEGIN Header_TaskProcessamento_fun */
+/* USER CODE BEGIN Header_TaskControle_fun */
 /**
-* @brief Function implementing the TaskProcessamen thread.
+* @brief Function implementing the TaskControle thread.
 * @param argument: Not used
 * @retval None
 */
-/* USER CODE END Header_TaskProcessamento_fun */
-void TaskProcessamento_fun(void *argument)
+/* USER CODE END Header_TaskControle_fun */
+void TaskControle_fun(void *argument)
 {
-  /* USER CODE BEGIN TaskProcessamento_fun */
+  /* USER CODE BEGIN TaskControle_fun */
   /* Infinite loop */
-
-// EXPERIMENTO SEMÁFORO:
+	// 	int cicloControle = 0; - EXPERIMENTO TESTE
   for(;;)
   {
-	osSemaphoreAcquire(sensorSemHandle, osWaitForever);
-	char mensagem[80];
+	osMutexAcquire(uartMutexHandle, osWaitForever); // EXPERIMENTO COM MUTEX
+	//cicloControle++; EXPERIMENTO TESTE
 
-	int tamanho = snprintf(
-		mensagem,
-		sizeof(mensagem),
-		"Dado trabalhado com sucesso!\r\n");
+	for (int i = 0; i < 50; i++)
+	{
+	  char msg[] = "CONTROLE...\r\n";
+	  //int tamanho = snprintf(msg, sizeof(msg), "[Ciclo %d] CONTROLE...\r\n", cicloControle); EXPERIMENTO TESTE
+	  HAL_UART_Transmit(&huart1, (uint8_t*)msg, sizeof(msg)-1, HAL_MAX_DELAY);
+      //HAL_UART_Transmit(&huart1, (uint8_t*)msg, (uint16_t)tamanho, HAL_MAX_DELAY); EXPERIMENTO TESTE
+	}
 
-	HAL_UART_Transmit(&huart1, (uint8_t*)mensagem, (uint16_t)tamanho, HAL_MAX_DELAY);
+	osMutexRelease(uartMutexHandle);
+
+	osDelay(1000);
   }
-
-  // EXPERIMENTO POLLING:
-//  for(;;)
-//  {
-//	char mensagem[80];
-//
-//	if (novoDado)
-//	{
-//		novoDado = false;
-//
-//		int tamanho = snprintf(
-//			mensagem,
-//			sizeof(mensagem),
-//			"Dado trabalhado com sucesso!\r\n");
-//
-//		HAL_UART_Transmit(&huart1, (uint8_t*)mensagem, (uint16_t)tamanho, HAL_MAX_DELAY);
-//	}
-//	osDelay(1000);
-
-  /* USER CODE END TaskProcessamento_fun */
+  /* USER CODE END TaskControle_fun */
 }
 
 /* Private application code --------------------------------------------------*/
